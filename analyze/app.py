@@ -19,18 +19,27 @@ def load_config():
     """Carrega configurações sensíveis de variáveis de ambiente ou arquivos."""
     config = {}
 
-    # Tentar carregar do Streamlit Secrets
+    # Carregar DB_JSON
     if "DB_JSON" in st.secrets:
-        config["db"] = json.loads(st.secrets["DB_JSON"])
-    elif os.path.exists("db.json"):
-        with open("db.json", "r") as f:
-            config["db"] = json.load(f)
+        config["db"] = {
+            "jobs": json.loads(st.secrets["DB_JSON"]["jobs"]),
+            "resums": json.loads(st.secrets["DB_JSON"]["resums"]),
+            "analysis": json.loads(st.secrets["DB_JSON"]["analysis"]),
+            "files": json.loads(st.secrets["DB_JSON"]["files"]),
+        }
     else:
-        st.warning("Arquivo 'db.json' não encontrado ou configurado nos Secrets.")
+        st.error("DB_JSON não configurado nos Secrets.")
 
-    config["token"] = os.getenv("TOKEN", st.secrets.get("TOKEN", None))
-    if not config["token"]:
-        st.warning("Token não configurado. Verifique as variáveis de ambiente ou os Secrets.")
+    # Carregar TOKEN_JSON
+    if "TOKEN_JSON" in st.secrets:
+        config["token"] = st.secrets["TOKEN_JSON"]
+    else:
+        st.error("TOKEN_JSON não configurado nos Secrets.")
+
+    # Carregar ENV_VARS
+    config["openai_api_key"] = st.secrets.get("ENV_VARS", {}).get("OPENAI_API_KEY", None)
+    if not config["openai_api_key"]:
+        st.warning("OPENAI_API_KEY não configurado nos Secrets.")
 
     return config
 
