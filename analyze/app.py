@@ -3,7 +3,6 @@ import json
 import time
 import streamlit as st
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from database import AnalyzeDatabase
 from drive.download_cv import download_files
 from analise import main as analise_main
@@ -73,29 +72,18 @@ def load_data(option):
 
 
 def display_table(df):
-    """Exibe a tabela interativa com AgGrid."""
-    gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_pagination(paginationAutoPageSize=True)
+    """Exibe a tabela interativa com Streamlit DataFrame."""
     if not df.empty:
-        gb.configure_column("Score", header_name="Score", sort="desc")
-        gb.configure_selection(selection_mode="multiple", use_checkbox=True)
-    grid_options = gb.build()
-    response = AgGrid(
-        df,
-        gridOptions=grid_options,
-        enable_enterprise_modules=True,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
-        theme="streamlit",
-    )
-    selected_rows = response.get("selected_rows", [])
-    return pd.DataFrame(selected_rows)
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.warning("Nenhum dado disponível para exibição.")
 
 
 def display_chart(df):
     """Exibe o gráfico de barras com os scores dos candidatos."""
     if not df.empty:
         st.subheader("Classificação dos Candidatos")
-        st.bar_chart(df, x="Nome", y="Score", color="Nome", horizontal=True)
+        st.bar_chart(df, x="Nome", y="Score", use_container_width=True)
 
 
 def delete_files_resum(resums):
