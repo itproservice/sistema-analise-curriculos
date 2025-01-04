@@ -1,5 +1,6 @@
 import os
-import time  # Adicionado para suportar delays
+import json
+import time
 import streamlit as st
 import pandas as pd
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
@@ -13,12 +14,28 @@ database = AnalyzeDatabase()
 # Configura a página do Streamlit com layout largo e título "Recrutador"
 st.set_page_config(layout="wide", page_title="Recrutador", page_icon=":brain:")
 
-# Define os caminhos para autenticação e download
-TOKEN_PATH = "token.json"
-CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), "credentials.json")
-FOLDER_ID = "1Kg_krUauUwMEHVeR9vWEj1-4eqHT-qEc"
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DOWNLOAD_DIR = os.path.join(SCRIPT_DIR, "drive", "curriculos")
+# Carregar configurações sensíveis de variáveis de ambiente ou arquivos locais
+def load_config():
+    """Carrega configurações sensíveis de variáveis de ambiente ou arquivos."""
+    config = {}
+
+    # Tentar carregar do Streamlit Secrets
+    if "DB_JSON" in st.secrets:
+        config["db"] = json.loads(st.secrets["DB_JSON"])
+    elif os.path.exists("db.json"):
+        with open("db.json", "r") as f:
+            config["db"] = json.load(f)
+    else:
+        st.warning("Arquivo 'db.json' não encontrado ou configurado nos Secrets.")
+
+    config["token"] = os.getenv("TOKEN", st.secrets.get("TOKEN", None))
+    if not config["token"]:
+        st.warning("Token não configurado. Verifique as variáveis de ambiente ou os Secrets.")
+
+    return config
+
+# Configurações do projeto
+CONFIG = load_config()
 
 
 def load_data(option):
@@ -72,39 +89,6 @@ def display_chart(df):
         st.bar_chart(df, x="Nome", y="Score", color="Nome", horizontal=True)
 
 
-def load_resume_details(resum_id):
-    """Carrega os detalhes do resumo do currículo."""
-    return database.get_resum_by_id(resum_id)
-
-
-def display_resume_details(selected_candidates):
-    """Exibe os detalhes complementares dos currículos selecionados."""
-    if not selected_candidates.empty:
-        for _, candidate in selected_candidates.iterrows():
-            st.markdown(f"## Detalhes do Currículo - {candidate.get('Nome')}")
-
-            resum_id = candidate.get("Resum ID")
-            if resum_id:
-                resum_data = load_resume_details(resum_id)
-                if resum_data:
-                    st.markdown("### Análise Detalhada")
-                    st.markdown(resum_data.get("content", "Não disponível"))
-                    st.markdown("### Avaliação")
-                    st.markdown(resum_data.get("opnion", "Não disponível"))
-
-                    with open(resum_data.get("file"), "rb") as pdf_file:
-                        pdf_data = pdf_file.read()
-                        st.download_button(
-                            label=f"Download Currículo {candidate.get('Nome')}",
-                            data=pdf_data,
-                            file_name=f"{candidate.get('Nome')}.pdf",
-                            mime="application/pdf",
-                        )
-                else:
-                    st.warning(f"Resumo não encontrado para o ID {resum_id}.")
-            st.divider()  # Adiciona uma linha divisória entre candidatos
-
-
 def delete_files_resum(resums):
     """Deleta os arquivos PDF dos currículos."""
     for resum in resums:
@@ -114,18 +98,16 @@ def delete_files_resum(resums):
 
 
 def run_download(progress_bar, status_text):
-    """Executa o download dos arquivos e atualiza o progresso na thread principal."""
-    downloaded_files = []
+    """Executa o download dos arquivos e atualiza o progresso."""
     try:
         for progress in range(0, 101, 20):
             progress_bar.progress(progress)
-            #status_text.text(f"Downlaod dos PDFs: {progress}%")
-            time.sleep(0.50)
+            status_text.text(f"Progresso do download: {progress}%")
+            time.sleep(0.5)
 
-        downloaded_files = download_files(TOKEN_PATH, CREDENTIALS_PATH, FOLDER_ID, DOWNLOAD_DIR)
-
+        downloaded_files = download_files(CONFIG["token"], "credentials.json", "folder_id", "curriculos")
         progress_bar.progress(100)
-        status_text.text("Progresso downlaod dos PDFs: 100% - Concluído")
+        status_text.text("Progresso do download: 100% - Concluído")
 
         if downloaded_files:
             st.success(f"Arquivos atualizados com sucesso: {len(downloaded_files)} arquivos baixados!")
@@ -136,24 +118,24 @@ def run_download(progress_bar, status_text):
 
 
 def run_analysis(progress_bar, status_text):
-    """Executa a análise dos currículos e atualiza o progresso na thread principal."""
+    """Executa a análise dos currículos e atualiza o progresso."""
     try:
         for progress in range(0, 101, 20):
             progress_bar.progress(progress)
-            #status_text.text(f"Iniciar analise: {progress}%")
-            time.sleep(0.1)
+            status_text.text(f"Progresso da análise: {progress}%")
+            time.sleep(0.5)
 
         results = analise_main()
-
         progress_bar.progress(100)
-        status_text.text("Progresso: 100% - Concluído")
+        status_text.text("Progresso da análise: 100% - Concluído")
 
         if any(result and result.get("status") == "success" for result in results):
-            st.success("Análise concluída com sucesso! Por favor, escolha a vaga no menu suspenso ao lado")
+            st.success("Análise concluída com sucesso! Escolha a vaga no menu suspenso ao lado.")
         else:
             st.warning("Nenhuma análise foi realizada ou houve falhas.")
     except Exception as e:
         st.error(f"Erro ao realizar análise: {str(e)}")
+
 
 def create_sidebar_actions():
     """Cria as ações da barra lateral com progresso exibido."""
@@ -171,11 +153,7 @@ def create_sidebar_actions():
             run_analysis(progress_bar, status_text)
 
         if option and st.button("Limpar Análise", use_container_width=True):
-            job = database.get_job_by_name(option)
-            resums = database.get_resums_by_job_id(job.get("id"))
-            database.delete_all_resums_by_job_id(job.get("id"))
-            database.delete_all_analysis_by_job_id(job.get("id"))
-            delete_files_resum(resums)
+            database.clear_all_data()
             st.warning("Análises e arquivos foram limpos!")
 
 
@@ -195,9 +173,5 @@ if option:
         display_chart(df := load_data(option))
         st.subheader("Lista de Candidatos")
         selected_candidates = display_table(df)
-
-        if not selected_candidates.empty:
-            st.subheader("Detalhes dos Candidatos Selecionados")
-            display_resume_details(selected_candidates)
 else:
     st.info("Selecione uma vaga para visualizar os candidatos.")
