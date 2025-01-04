@@ -1,3 +1,3 @@
 streamlit==1.15.2
 pandas==1.5.3
-st-aggrid==0.2.3.post1  # Substituir por uma versão compatível
+st-aggrid
